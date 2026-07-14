@@ -39,8 +39,6 @@ Install a recent version of `git-credential-oauth`, then add this to
     oauthTokenURL = /oauth/token
 ```
 
-For example, if the VM is named `GERRIT-VM`, configure the host as follows:
-
 The empty `helper` resets inherited credential helpers for this Gerrit host,
 including system-level helpers such as Homebrew's `osxkeychain`; see
 [`git-credential-oauth` issue #92](https://github.com/hickford/git-credential-oauth/issues/92).
