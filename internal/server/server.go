@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"log/slog"
 	"net/http"
 	"net/http/httputil"
@@ -54,6 +55,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /_healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok\n")) })
 	mux.HandleFunc("GET /oauth/authorize", s.authorize)
+	mux.HandleFunc("POST /oauth/authorize", s.authorizeDecision)
 	mux.HandleFunc("POST /oauth/token", s.token)
 	mux.HandleFunc("/", s.proxyRequest)
 	return securityHeaders(mux)
@@ -73,19 +75,72 @@ func (s *Server) authorize(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid OAuth authorization request", http.StatusBadRequest)
 		return
 	}
-	code := s.cfg.OAuth.IssueCode(oauthflow.Code{
+	confirmation := s.cfg.OAuth.RequestConfirmation(oauthflow.Code{
 		Email: email, ClientID: oauthflow.ClientID, RedirectURI: redirectURI,
-		CodeChallenge: q.Get("code_challenge"),
+		CodeChallenge: q.Get("code_challenge"), State: q.Get("state"),
 	})
-	u, _ := url.Parse(redirectURI)
+	redirect, _ := url.Parse(redirectURI)
+	data := authorizationPageData{
+		Email: email, GerritHost: s.cfg.ExternalURL.Hostname(), HelperAddress: redirect.Host,
+		Confirmation: confirmation,
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'")
+	w.Header().Set("X-Frame-Options", "DENY")
+	if err := authorizationPage.Execute(w, data); err != nil {
+		s.cfg.Logger.Error("render authorization confirmation", "error", err)
+	}
+}
+
+func (s *Server) authorizeDecision(w http.ResponseWriter, r *http.Request) {
+	email := r.Header.Get("X-ExeDev-Email")
+	if email == "" {
+		http.Error(w, "Authentication required", http.StatusUnauthorized)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Invalid authorization decision", http.StatusBadRequest)
+		return
+	}
+	if r.Form.Get("decision") != "approve" {
+		if err := s.cfg.OAuth.DenyConfirmation(r.Form.Get("confirmation"), email); err != nil {
+			http.Error(w, "Invalid or expired authorization confirmation", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte("<!doctype html><title>Token request denied</title><p>Token request denied. You may close this window.</p>"))
+		return
+	}
+	code, entry, err := s.cfg.OAuth.ApproveConfirmation(r.Form.Get("confirmation"), email)
+	if err != nil {
+		http.Error(w, "Invalid or expired authorization confirmation", http.StatusBadRequest)
+		return
+	}
+	u, _ := url.Parse(entry.RedirectURI)
 	out := u.Query()
 	out.Set("code", code)
-	if state := q.Get("state"); state != "" {
-		out.Set("state", state)
+	if entry.State != "" {
+		out.Set("state", entry.State)
 	}
 	u.RawQuery = out.Encode()
 	http.Redirect(w, r, u.String(), http.StatusFound)
 }
+
+type authorizationPageData struct {
+	Email, GerritHost, HelperAddress, Confirmation string
+}
+
+var authorizationPage = template.Must(template.New("authorization").Parse(`<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Authorize credential helper</title>
+<style>body{font:16px system-ui,sans-serif;max-width:42rem;margin:10vh auto;padding:0 1.5rem;line-height:1.5;color:#202124}main{border:1px solid #dadce0;border-radius:12px;padding:2rem}h1{font-size:1.4rem;margin-top:0}.actions{display:flex;gap:.75rem;margin-top:1.5rem}button{font:inherit;padding:.65rem 1rem;border-radius:6px;border:1px solid #aaa;background:white;cursor:pointer}.approve{background:#1769e0;color:white;border-color:#1769e0}</style>
+</head><body><main><h1>Authorize credential helper?</h1>
+<p>Do you want to mint a token that will authenticate you as <strong>{{.Email}}</strong> for <strong>{{.GerritHost}}</strong> and provide it to the credential helper running at <strong>{{.HelperAddress}}</strong>?</p>
+<form method="post" action="/oauth/authorize"><input type="hidden" name="confirmation" value="{{.Confirmation}}"><div class="actions"><button class="approve" type="submit" name="decision" value="approve">Mint token</button><button type="submit" name="decision" value="deny">Deny</button></div></form>
+</main></body></html>`))
 
 func (s *Server) token(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {

@@ -17,7 +17,7 @@ It is designed for a public exe.dev HTTP proxy in front of a loopback-only Gerri
 * Unauthenticated browser requests are redirected through `/__exe.dev/login`.
 * Unauthenticated Git smart-HTTP requests get `401 Unauthorized`, which invokes Git's credential helpers.
 * [`git-credential-oauth`](https://github.com/hickford/git-credential-oauth) uses this proxy's OAuth 2.0 authorization-code flow with PKCE.
-* The authorization page identifies the user from `X-ExeDev-Email` and returns a one-time code to the helper's loopback callback.
+* The authorization page identifies the user from `X-ExeDev-Email`, displays the Gerrit host and loopback credential-helper address, and requires an explicit **Mint token** confirmation before returning a one-time code to the helper's callback.
 * The token endpoint exchanges that code for a 22-hour opaque token generated with `crypto/rand.Text()`.
 * Tokens and authorization codes are kept only in memory. Restarting the service invalidates all of them.
 * A valid token is mapped back to its email address and proxied to Gerrit as `X-ExeDev-Email`.

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -94,7 +95,7 @@ func TestExeDevHeaderAndTokenAuthentication(t *testing.T) {
 	}
 }
 
-func TestAuthorizationEndpoint(t *testing.T) {
+func TestAuthorizationEndpointRequiresConfirmation(t *testing.T) {
 	s, _ := testServer(t)
 	verifier := "this-is-a-long-enough-test-verifier"
 	digest := sha256.Sum256([]byte(verifier))
@@ -112,13 +113,35 @@ func TestAuthorizationEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "alice@example.com") ||
+		!strings.Contains(string(body), "gerrit.example") || !strings.Contains(string(body), "127.0.0.1:23456") {
+		t.Fatalf("confirmation response = %d %q", resp.StatusCode, body)
+	}
+	if strings.Contains(string(body), "state123") || strings.Contains(string(body), challenge) {
+		t.Fatalf("confirmation page leaked OAuth parameters: %q", body)
+	}
+	match := regexp.MustCompile(`name="confirmation" value="([^"]+)"`).FindSubmatch(body)
+	if len(match) != 2 {
+		t.Fatalf("confirmation token missing: %q", body)
+	}
+
+	form := url.Values{"confirmation": {string(match[1])}, "decision": {"approve"}}
+	req, _ = http.NewRequest("POST", s.URL+"/oauth/authorize", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("X-ExeDev-Email", "alice@example.com")
+	resp, err = client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
 	location, _ := url.Parse(resp.Header.Get("Location"))
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusFound || location.Query().Get("code") == "" || location.Query().Get("state") != "state123" {
 		t.Fatalf("authorization redirect = %d %q", resp.StatusCode, location)
 	}
-	form := url.Values{"grant_type": {"authorization_code"}, "client_id": {oauthflow.ClientID}, "redirect_uri": {"http://127.0.0.1:23456/"}, "code": {location.Query().Get("code")}, "code_verifier": {verifier}}
-	resp, err = client.Post(s.URL+"/oauth/token", "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
+	tokenForm := url.Values{"grant_type": {"authorization_code"}, "client_id": {oauthflow.ClientID}, "redirect_uri": {"http://127.0.0.1:23456/"}, "code": {location.Query().Get("code")}, "code_verifier": {verifier}}
+	resp, err = client.Post(s.URL+"/oauth/token", "application/x-www-form-urlencoded", strings.NewReader(tokenForm.Encode()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,5 +150,40 @@ func TestAuthorizationEndpoint(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK || tokenResponse["access_token"] == "" || tokenResponse["expires_in"] != float64(79200) {
 		t.Fatalf("token response = %d %#v", resp.StatusCode, tokenResponse)
+	}
+}
+
+func TestAuthorizationCannotBeApprovedByAnotherUserOrReplayed(t *testing.T) {
+	s, _ := testServer(t)
+	q := url.Values{
+		"response_type": {"code"}, "client_id": {oauthflow.ClientID},
+		"redirect_uri": {"http://localhost:1234/"}, "code_challenge": {"challenge"},
+		"code_challenge_method": {"S256"},
+	}
+	req, _ := http.NewRequest("GET", s.URL+"/oauth/authorize?"+q.Encode(), nil)
+	req.Header.Set("X-ExeDev-Email", "alice@example.com")
+	resp, err := s.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	match := regexp.MustCompile(`name="confirmation" value="([^"]+)"`).FindSubmatch(body)
+	if len(match) != 2 {
+		t.Fatal("confirmation token missing")
+	}
+	form := url.Values{"confirmation": {string(match[1])}, "decision": {"approve"}}
+	for i, email := range []string{"mallory@example.com", "alice@example.com"} {
+		req, _ = http.NewRequest("POST", s.URL+"/oauth/authorize", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("X-ExeDev-Email", email)
+		resp, err = s.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("attempt %d status = %d", i, resp.StatusCode)
+		}
 	}
 }

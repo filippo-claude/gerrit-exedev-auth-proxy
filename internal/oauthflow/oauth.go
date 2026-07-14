@@ -19,9 +19,11 @@ type Code struct {
 	ClientID      string
 	RedirectURI   string
 	CodeChallenge string
+	State         string
 }
 
 type Service struct {
+	confirmations *store.Store[Code]
 	codes         *store.Store[Code]
 	tokens        *store.Store[string]
 	codeLifetime  time.Duration
@@ -30,9 +32,39 @@ type Service struct {
 
 func New(codeLifetime, tokenLifetime time.Duration) *Service {
 	return &Service{
-		codes: store.New[Code](), tokens: store.New[string](),
+		confirmations: store.New[Code](), codes: store.New[Code](), tokens: store.New[string](),
 		codeLifetime: codeLifetime, tokenLifetime: tokenLifetime,
 	}
+}
+
+// RequestConfirmation records a validated authorization request until the user
+// explicitly approves it. Confirmations are single-use and short-lived.
+func (s *Service) RequestConfirmation(code Code) string {
+	return s.confirmations.Issue(code, s.codeLifetime)
+}
+
+func (s *Service) ApproveConfirmation(confirmation, email string) (string, Code, error) {
+	entry, err := s.consumeConfirmation(confirmation, email)
+	if err != nil {
+		return "", Code{}, err
+	}
+	return s.IssueCode(entry), entry, nil
+}
+
+func (s *Service) DenyConfirmation(confirmation, email string) error {
+	_, err := s.consumeConfirmation(confirmation, email)
+	return err
+}
+
+func (s *Service) consumeConfirmation(confirmation, email string) (Code, error) {
+	entry, ok := s.confirmations.Consume(confirmation)
+	if !ok {
+		return Code{}, errors.New("invalid or expired confirmation")
+	}
+	if email == "" || email != entry.Email {
+		return Code{}, errors.New("confirmation identity mismatch")
+	}
+	return entry, nil
 }
 
 func (s *Service) IssueCode(code Code) string {
@@ -60,6 +92,7 @@ func (s *Service) Authenticate(token string) (string, bool) {
 }
 
 func (s *Service) Cleanup() {
+	s.confirmations.Cleanup()
 	s.codes.Cleanup()
 	s.tokens.Cleanup()
 }
