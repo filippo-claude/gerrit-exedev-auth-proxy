@@ -26,66 +26,35 @@ Gerrit never receives the OAuth token or the client's `Authorization` header.
 
 ## Client setup
 
-Install a recent version of `git-credential-oauth`, then configure this Gerrit host:
+Install a recent version of `git-credential-oauth`, then add this to
+`~/.gitconfig`, replacing `GERRIT-VM` with the exe.dev VM name:
 
-```sh
-git config --global credential.https://geomys-gerrit.exe.xyz.oauthClientId git-credential-oauth
-git config --global credential.https://geomys-gerrit.exe.xyz.oauthAuthURL /oauth/authorize
-git config --global credential.https://geomys-gerrit.exe.xyz.oauthTokenURL /oauth/token
+```ini
+[credential "https://GERRIT-VM.exe.xyz"]
+    helper =
+    helper = cache --timeout 79200
+    helper = oauth
+    oauthClientId = git-credential-oauth
+    oauthAuthURL = /oauth/authorize
+    oauthTokenURL = /oauth/token
 ```
 
-Configure credential helpers explicitly:
+For this deployment, `GERRIT-VM` is `geomys-gerrit`.
 
-```sh
-# Ignore the error if no global helper was configured.
-git config --global --unset-all credential.helper || :
+The empty `helper` resets inherited credential helpers for this Gerrit host,
+including system-level helpers such as Homebrew's `osxkeychain`; see
+[`git-credential-oauth` issue #92](https://github.com/hickford/git-credential-oauth/issues/92).
+The token is then cached in memory for its 22-hour server lifetime, with OAuth
+used when the cache is empty.
 
-# Reset helpers inherited from lower-priority system configuration.
-git config --global --add credential.helper ""
-
-# Keep the token in memory for its 22-hour server lifetime.
-git config --global --add credential.helper "cache --timeout 79200"
-
-# Run the OAuth flow when the cache is empty.
-git config --global --add credential.helper oauth
-```
-
-The empty helper is important. As discussed in
-[`git-credential-oauth` issue #92](https://github.com/hickford/git-credential-oauth/issues/92),
-a lower-priority Git configuration can install a persistent helper even after
-`--unset-all` changes the global configuration. Homebrew Git on macOS, for
-example, can inherit `osxkeychain` from `/opt/homebrew/etc/gitconfig`. An empty
-`credential.helper` entry resets the inherited helper list before adding the
-intended in-memory cache and OAuth helper.
-
-Check the effective configuration, including its source files:
-
-```sh
-git config --show-origin --get-all credential.helper
-```
-
-Expected values at the end of the output are an empty helper, `cache`, and
-`oauth`, in that order.
-
-Then clone normally:
+Clone normally:
 
 ```sh
 git clone https://geomys-gerrit.exe.xyz/PROJECT
 ```
 
-On first use, `git-credential-oauth` prints and normally opens an exe.dev URL.
-Log in with an email address that has access to the VM. The local callback then
-returns the credential to Git.
-
-### Clearing a cached credential
-
-```sh
-git credential-cache exit
-```
-
-Because the recommended setup resets inherited helpers, the token is not also
-silently saved to a system keychain. Restarting the proxy invalidates every
-issued token regardless of client-side caching.
+On first use, `git-credential-oauth` prints and normally opens an exe.dev login
+URL. Restarting the proxy invalidates all issued tokens.
 
 ## Server usage
 
