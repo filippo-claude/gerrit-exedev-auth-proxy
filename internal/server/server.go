@@ -126,7 +126,7 @@ func (s *Server) authorizeDecision(w http.ResponseWriter, r *http.Request) {
 		out.Set("state", entry.State)
 	}
 	u.RawQuery = out.Encode()
-	http.Redirect(w, r, u.String(), http.StatusFound)
+	http.Redirect(w, r, u.String(), http.StatusSeeOther)
 }
 
 type authorizationPageData struct {

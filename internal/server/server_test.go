@@ -137,7 +137,7 @@ func TestAuthorizationEndpointRequiresConfirmation(t *testing.T) {
 	}
 	location, _ := url.Parse(resp.Header.Get("Location"))
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusFound || location.Query().Get("code") == "" || location.Query().Get("state") != "state123" {
+	if resp.StatusCode != http.StatusSeeOther || location.Query().Get("code") == "" || location.Query().Get("state") != "state123" {
 		t.Fatalf("authorization redirect = %d %q", resp.StatusCode, location)
 	}
 	tokenForm := url.Values{"grant_type": {"authorization_code"}, "client_id": {oauthflow.ClientID}, "redirect_uri": {"http://127.0.0.1:23456/"}, "code": {location.Query().Get("code")}, "code_verifier": {verifier}}
