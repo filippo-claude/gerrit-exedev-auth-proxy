@@ -86,7 +86,7 @@ func (s *Server) authorize(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'")
 	w.Header().Set("X-Frame-Options", "DENY")
 	if err := authorizationPage.Execute(w, data); err != nil {
 		s.cfg.Logger.Error("render authorization confirmation", "error", err)

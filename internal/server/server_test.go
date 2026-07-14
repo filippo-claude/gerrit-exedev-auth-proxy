@@ -119,6 +119,9 @@ func TestAuthorizationEndpointRequiresConfirmation(t *testing.T) {
 		!strings.Contains(string(body), "gerrit.example") || !strings.Contains(string(body), "127.0.0.1:23456") {
 		t.Fatalf("confirmation response = %d %q", resp.StatusCode, body)
 	}
+	if strings.Contains(resp.Header.Get("Content-Security-Policy"), "form-action") {
+		t.Fatalf("confirmation CSP blocks exe.dev-proxied form submission: %q", resp.Header.Get("Content-Security-Policy"))
+	}
 	if strings.Contains(string(body), "state123") || strings.Contains(string(body), challenge) {
 		t.Fatalf("confirmation page leaked OAuth parameters: %q", body)
 	}
