@@ -102,6 +102,42 @@ The Gerrit HTTP listener must be reachable only by trusted local processes.
 The proxy deliberately trusts `X-ExeDev-Email` supplied by the documented
 exe.dev HTTPS proxy.
 
+## Deployment with systemd
+
+Build and install the binary and unit:
+
+```sh
+go build -trimpath -ldflags='-s -w' -o gerrit-exedev-auth-proxy ./cmd/gerrit-exedev-auth-proxy
+sudo install -o root -g root -m 0755 gerrit-exedev-auth-proxy /usr/local/bin/gerrit-exedev-auth-proxy
+sudo install -o root -g root -m 0644 gerrit-exedev-auth-proxy.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now gerrit-exedev-auth-proxy
+```
+
+Make the exe.dev proxy public only after verifying the service locally. Public
+access is necessary so an unauthenticated Git client can reach the `401`
+challenge and OAuth endpoints; browser authentication is still enforced by the
+application redirect.
+
+```sh
+ssh exe.dev share set-public geomys-gerrit
+```
+
+### Rollback
+
+To return to the previous nginx listener on port 8000:
+
+```sh
+sudo systemctl disable --now gerrit-exedev-auth-proxy
+sudo systemctl start nginx
+```
+
+If the exe.dev endpoint should no longer be public:
+
+```sh
+ssh exe.dev share set-private geomys-gerrit
+```
+
 ## Endpoints
 
 * `GET /oauth/authorize` — OAuth authorization endpoint; requires exe.dev login.
