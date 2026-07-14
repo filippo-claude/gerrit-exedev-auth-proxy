@@ -1,0 +1,28 @@
+[Unit]
+Description=exe.dev authentication proxy for Gerrit
+After=network-online.target gerrit.service
+Wants=network-online.target
+Requires=gerrit.service
+
+[Service]
+Type=simple
+User=exedev
+Group=exedev
+ExecStart=/usr/local/bin/gerrit-exedev-auth-proxy -listen :8000 -upstream http://127.0.0.1:8081 -external-url https://geomys-gerrit.exe.xyz -token-lifetime 22h
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
