@@ -18,7 +18,7 @@ import (
 func main() {
 	listen := flag.String("listen", ":8000", "HTTP listen address")
 	upstreamRaw := flag.String("upstream", "http://127.0.0.1:8081", "Gerrit upstream URL")
-	externalRaw := flag.String("external-url", "https://geomys-gerrit.exe.xyz", "public base URL")
+	externalRaw := flag.String("external-url", "", "public base URL (required)")
 	tokenLifetimeRaw := flag.String("token-lifetime", "22h", "OAuth access token lifetime")
 	flag.Parse()
 
@@ -29,7 +29,7 @@ func main() {
 		os.Exit(2)
 	}
 	external, err := url.Parse(*externalRaw)
-	if err != nil {
+	if err != nil || external.Scheme == "" || external.Host == "" {
 		logger.Error("invalid external URL", "error", err)
 		os.Exit(2)
 	}

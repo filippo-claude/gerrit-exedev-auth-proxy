@@ -39,7 +39,7 @@ Install a recent version of `git-credential-oauth`, then add this to
     oauthTokenURL = /oauth/token
 ```
 
-For this deployment, `GERRIT-VM` is `geomys-gerrit`.
+For example, if the VM is named `GERRIT-VM`, configure the host as follows:
 
 The empty `helper` resets inherited credential helpers for this Gerrit host,
 including system-level helpers such as Homebrew's `osxkeychain`; see
@@ -50,7 +50,7 @@ used when the cache is empty.
 Clone normally:
 
 ```sh
-git clone https://geomys-gerrit.exe.xyz/PROJECT
+git clone https://GERRIT-VM.exe.xyz/PROJECT
 ```
 
 On first use, `git-credential-oauth` prints and normally opens an exe.dev login
@@ -63,7 +63,7 @@ go build ./cmd/gerrit-exedev-auth-proxy
 ./gerrit-exedev-auth-proxy \
   -listen :8000 \
   -upstream http://127.0.0.1:8081 \
-  -external-url https://geomys-gerrit.exe.xyz \
+  -external-url https://GERRIT-VM.exe.xyz \
   -token-lifetime 22h
 ```
 
@@ -89,7 +89,7 @@ challenge and OAuth endpoints; browser authentication is still enforced by the
 application redirect.
 
 ```sh
-ssh exe.dev share set-public geomys-gerrit
+ssh exe.dev share set-public GERRIT-VM
 ```
 
 ### Rollback
@@ -104,7 +104,7 @@ sudo systemctl start nginx
 If the exe.dev endpoint should no longer be public:
 
 ```sh
-ssh exe.dev share set-private geomys-gerrit
+ssh exe.dev share set-private GERRIT-VM
 ```
 
 ## Endpoints
